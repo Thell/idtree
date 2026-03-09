@@ -640,6 +640,8 @@ impl IdTree {
     }
 }
 
+// MARK: Main
+
 impl IdTree {
     /// Create an ID-Tree from an adjacency dictionary.
     pub fn new(adj_dict: &IntMap<usize, IntSet<usize>>) -> Self {
