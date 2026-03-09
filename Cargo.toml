@@ -15,7 +15,7 @@ crate-type = ["rlib", "cdylib"]
 fixedbitset = "0.5"
 nohash-hasher = "0.2"
 rapidhash = "4.4.1"
-smallvec = "1"
+smallvec = "1.15.1"
 
 [dev-dependencies]
 divan = "0.1.21"
