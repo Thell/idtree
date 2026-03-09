@@ -2,8 +2,9 @@
 
 A Rust implementation of the **ID‑Tree** dynamic connectivity data structure from:
 
-**_ID‑Tree: A Dynamic Tree Data Structure for Fast Connectivity Queries_**,  
-ACM Transactions on Algorithms, 2024.  
+**_Constant-time Connectivity Querying in Dynamic Graphs_**,  
+Proceedings of the ACM on Management of Data, Volume 2, Issue 6  
+Article No.: 230, Pages 1 - 23  
 <https://dl.acm.org/doi/abs/10.1145/3698805>
 
 The Improved D-Tree (ID-Tree) is an improvement on the D-Tree data structure from:
