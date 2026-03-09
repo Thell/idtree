@@ -2,6 +2,8 @@ use divan::Bencher;
 use idtree::IdTree;
 use nohash_hasher::{IntMap, IntSet};
 
+const ARGS: &[usize] = &[1_000, 10_000, 100_000];
+
 fn make_adj(n: usize) -> IntMap<usize, IntSet<usize>> {
     let mut adj: IntMap<usize, IntSet<usize>> = IntMap::default();
     for i in 0..n {
@@ -22,7 +24,7 @@ fn make_edges(n: usize) -> Vec<(usize, usize)> {
     edges
 }
 
-#[divan::bench(args = [10_000, 100_000, 500_000])]
+#[divan::bench(args = ARGS)]
 fn bench_build_from_adj(bencher: Bencher, n: usize) {
     let mut adj = make_adj(n);
     let edges = make_edges(n);
@@ -38,7 +40,7 @@ fn bench_build_from_adj(bencher: Bencher, n: usize) {
     });
 }
 
-#[divan::bench(args = [1_000, 10_000, 100_000])]
+#[divan::bench(args = ARGS)]
 fn bench_insert(bencher: Bencher, n: usize) {
     let adj = make_adj(n);
     let edges = make_edges(n);
@@ -53,7 +55,7 @@ fn bench_insert(bencher: Bencher, n: usize) {
         });
 }
 
-#[divan::bench(args = [1_000, 10_000, 100_000])]
+#[divan::bench(args = ARGS)]
 fn bench_query(bencher: Bencher, n: usize) {
     let adj = make_adj(n);
     let mut tree = IdTree::new(&adj);
@@ -71,7 +73,7 @@ fn bench_query(bencher: Bencher, n: usize) {
     });
 }
 
-#[divan::bench(args = [1_000, 10_000, 100_000])]
+#[divan::bench(args = ARGS)]
 fn bench_delete(bencher: Bencher, n: usize) {
     let adj = make_adj(n);
     let mut tree = IdTree::new(&adj);
