@@ -19,6 +19,7 @@ smallvec = "1.15.1"
 
 [dev-dependencies]
 divan = "0.1.21"
+rand = "0.10.0"
 
 [features]
 default = []

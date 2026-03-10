@@ -9,7 +9,7 @@ use smallvec::SmallVec;
 struct Node {
     parent: i32,
     subtree_size: usize,
-    adj: SmallVec<[usize; 4]>,
+    neighbors: SmallVec<[usize; 4]>,
 }
 
 impl Node {
@@ -18,22 +18,21 @@ impl Node {
         Node {
             parent: -1,
             subtree_size: 1,
-            adj: SmallVec::new(),
+            neighbors: SmallVec::new(),
         }
     }
 
     #[inline]
-    fn insert_adj(&mut self, u: usize) {
-        // preserve set semantics (no duplicates)
-        if !self.adj.contains(&u) {
-            self.adj.push(u);
+    fn insert_neighbor(&mut self, u: usize) {
+        if !self.neighbors.contains(&u) {
+            self.neighbors.push(u);
         }
     }
 
     #[inline]
-    fn delete_adj(&mut self, u: usize) {
-        if let Some(i) = self.adj.iter().position(|&x| x == u) {
-            self.adj.swap_remove(i);
+    fn delete_neighbor(&mut self, u: usize) {
+        if let Some(i) = self.neighbors.iter().position(|&x| x == u) {
+            self.neighbors.swap_remove(i);
         }
     }
 }
@@ -120,7 +119,7 @@ impl IdTree {
         in_component.set(root, true);
 
         while let Some(u) = stack.pop() {
-            for &v in &self.nodes[u].adj {
+            for &v in &self.nodes[u].neighbors {
                 if !in_component[v] {
                     stack.push(v);
                     in_component.set(v, true);
@@ -204,7 +203,7 @@ impl IdTree {
         let mut stack = vec![v];
         let mut visited = IntSet::from_iter([v]);
         while let Some(node) = stack.pop() {
-            for &neighbor in self.nodes[node].adj.iter() {
+            for &neighbor in self.nodes[node].neighbors.iter() {
                 if visited.insert(neighbor) {
                     stack.push(neighbor);
                 }
@@ -227,7 +226,7 @@ impl IdTree {
         while let Some(node) = stack.pop() {
             stack.extend(
                 self.nodes[node]
-                    .adj
+                    .neighbors
                     .iter()
                     .filter(|&v| !visited.put(*v))
                     .copied(),
@@ -285,7 +284,7 @@ impl IdTree {
 
     /// Isolate a single node by removing all incident edges.
     pub fn isolate_node(&mut self, v: usize) {
-        self.nodes[v].adj.clone().iter().for_each(|neighbor| {
+        self.nodes[v].neighbors.clone().iter().for_each(|neighbor| {
             self.delete_edge(v, *neighbor);
         });
     }
@@ -297,22 +296,22 @@ impl IdTree {
 
     /// Returns true if the node is isolated.
     pub fn is_isolated(&mut self, v: usize) -> bool {
-        self.nodes[v].adj.is_empty()
+        self.nodes[v].neighbors.is_empty()
     }
 
     /// Returns the degree of the node.
     pub fn degree(&mut self, v: usize) -> i32 {
-        self.nodes[v].adj.len() as i32
+        self.nodes[v].neighbors.len() as i32
     }
 
     /// Returns the neighbors of the node.
     pub fn neighbors(&mut self, v: usize) -> Vec<usize> {
-        self.nodes[v].adj.iter().cloned().collect()
+        self.nodes[v].neighbors.iter().cloned().collect()
     }
 
     /// Returns the neighbors of the node.
     pub fn neighbors_smallvec(&mut self, v: usize) -> SmallVec<[usize; 4]> {
-        self.nodes[v].adj.clone()
+        self.nodes[v].neighbors.clone()
     }
 
     /// Retain only non-isolated nodes from `from_indices`.
@@ -354,7 +353,7 @@ impl IdTree {
                 break;
             }
 
-            for &v in &self.nodes[u].adj {
+            for &v in &self.nodes[u].neighbors {
                 if visited[v] != self.current_distance_generation {
                     visited[v] = self.current_distance_generation;
                     parents[v] = u;
@@ -629,7 +628,7 @@ impl IdTree {
 
         while let Some(u) = queue.pop_front() {
             let distance_to_u = self.distances[u];
-            for &v in &self.nodes[u].adj {
+            for &v in &self.nodes[u].neighbors {
                 if self.distance_generations[v] != self.current_distance_generation {
                     self.distance_generations[v] = self.current_distance_generation;
                     self.distances[v] = distance_to_u + 1;
@@ -645,7 +644,9 @@ impl IdTree {
 impl IdTree {
     /// Create an ID-Tree from an adjacency dictionary.
     pub fn new(adj_dict: &IntMap<usize, IntSet<usize>>) -> Self {
-        Self::setup(adj_dict)
+        let mut instance = Self::setup(adj_dict);
+        instance.initialize();
+        instance
     }
 
     fn setup(adj_dict: &IntMap<usize, IntSet<usize>>) -> Self {
@@ -654,7 +655,7 @@ impl IdTree {
             .map(|i| {
                 let mut node = Node::new();
                 for &j in adj_dict.get(&i).unwrap_or(&IntSet::default()) {
-                    node.insert_adj(j);
+                    node.insert_neighbor(j);
                 }
                 node
             })
@@ -675,12 +676,77 @@ impl IdTree {
         }
     }
 
+    fn initialize(&mut self) {
+        for &node_index in self.sort_nodes_by_degree().iter() {
+            if self.vec_bool_scratch[node_index] {
+                continue;
+            }
+            self.bfs_setup_subtrees(node_index);
+
+            if let Some(centroid_node) = self.find_centroid_in_q() {
+                self.reroot(centroid_node);
+            }
+        }
+        self.vec_bool_scratch.fill(false);
+    }
+
+    fn sort_nodes_by_degree(&self) -> Vec<usize> {
+        let mut node_indices: Vec<usize> = (0..self.n).collect();
+        node_indices.sort_unstable_by(|&a, &b| {
+            self.nodes[b]
+                .neighbors
+                .len()
+                .cmp(&self.nodes[a].neighbors.len())
+        });
+        node_indices
+    }
+
+    fn bfs_setup_subtrees(&mut self, root: usize) {
+        self.deque_scratch.clear();
+        self.deque_scratch.push_back(root);
+
+        self.node_vec_scratch.clear();
+        self.node_vec_scratch.push(root);
+        self.vec_bool_scratch[root] = true;
+
+        while let Some(node_index) = self.deque_scratch.pop_front() {
+            for j in 0..self.nodes[node_index].neighbors.len() {
+                let neighbor_index = self.nodes[node_index].neighbors[j];
+                if !self.vec_bool_scratch[neighbor_index] {
+                    self.vec_bool_scratch[neighbor_index] = true;
+                    self.nodes[neighbor_index].parent = node_index as i32;
+                    self.node_vec_scratch.push(neighbor_index);
+                    self.deque_scratch.push_back(neighbor_index);
+                }
+            }
+        }
+
+        // Propagate subtree sizes up the tree, skipping the root
+        for &child_index in self.node_vec_scratch.iter().skip(1).rev() {
+            let parent_index = self.nodes[child_index].parent as usize;
+            self.nodes[parent_index].subtree_size += self.nodes[child_index].subtree_size;
+        }
+    }
+
+    fn find_centroid_in_q(&self) -> Option<usize> {
+        let num_nodes = self.node_vec_scratch.len();
+        let half_num_nodes = num_nodes / 2;
+
+        self.node_vec_scratch.iter().rev().find_map(|&node_index| {
+            if self.nodes[node_index].subtree_size > half_num_nodes {
+                Some(node_index)
+            } else {
+                None
+            }
+        })
+    }
+
     fn insert_edge_in_graph(&mut self, u: usize, v: usize) -> bool {
         if u >= self.n || v >= self.n || u == v {
             return false;
         }
-        self.nodes[u].insert_adj(v);
-        self.nodes[v].insert_adj(u);
+        self.nodes[u].insert_neighbor(v);
+        self.nodes[v].insert_neighbor(u);
         true
     }
 
@@ -789,8 +855,8 @@ impl IdTree {
         if u >= self.n || v >= self.n || u == v {
             return false;
         }
-        self.nodes[u].delete_adj(v);
-        self.nodes[v].delete_adj(u);
+        self.nodes[u].delete_neighbor(v);
+        self.nodes[v].delete_neighbor(u);
         true
     }
 
@@ -836,7 +902,7 @@ impl IdTree {
         while let Some(mut node) = stack.pop() {
             //  9 foreach 𝑦 ∈ 𝑁(𝑥) do
             'neighbors: for &neighbor in nodes[node]
-                .adj
+                .neighbors
                 .iter()
                 // 10 if 𝑦 = 𝑝𝑎𝑟𝑒𝑛𝑡(𝑥) then continue;
                 .filter(|&&n| n != nodes[node].parent as usize)
