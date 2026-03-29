@@ -1,4 +1,4 @@
-# id-tree
+# DND-Tree
 
 A Rust implementation of the **ID‑Tree** dynamic connectivity data structure from:
 
@@ -13,11 +13,11 @@ The Improved D-Tree (ID-Tree) is an improvement on the D-Tree data structure fro
 Proc. VLDB Endow. 15, 11 (2022), 3263–3276
 <https://www.vldb.org/pvldb/vol15/p3263-chen.pdf>
 
-The implementation is fully safe Rust.
+*This is essentially the DNDTree data structure with the disjoint set tree removed.*
 
 ## Algorithmic Complexity
 
-| Operation          | ID‑Tree     | D‑Tree                                |
+| Operation          | DND‑Tree    | D‑Tree                                |
 |--------------------|-------------|---------------------------------------|
 | Query processing   | $O(\alpha)$ | $O(h)$                                |
 | Edge insertion     | $O(h)$      | $O(h \cdot \text{nbr}_\text{update})$ |
@@ -31,49 +31,90 @@ Where:
  delete a vertex from neighbors of a vertex.
 - $\text{nbr}_\text{scan}$ is the time to scan all neighbors of a vertex.
 
-## Performance Characteristics
+# Variants
 
+The full reference C++ implementation has buffered tree operations in-place
+which the paper utilizes for temporal capabilities. The Rust implementations
+do not have this capability. A part of the buffered operations includes dedup
+of tree operations which the Rust implementations also do the remaining
+overhead of the buffered operations is minor but measurable.
+
+## C++
+CPPDNDTree => Reference implementation accessed via ffi
+
+## Rust
+IDTree => Dedicated ID-Tree only build  
+DNDTree- => DSU implemented as array back doubly linked list
+
+# Benches
+
+The expensive DSU maintenance operations are avoided by the ID-Tree but it pays
+by having to traverse the spanning tree for each query.
+
+
+## road-usroads-48.mtx
+
+This is a medium sized (126k nodes) graph with average degree 2.
 ```
-Timer precision: 100 ns
-bench            fastest       │ slowest       │ median        │ mean          │ samples │ iters
-├─ bench_build_from_adj¹       │               │               │               │         │
-│  ├─ 10000      388.6 µs      │ 866.1 µs      │ 431.4 µs      │ 465.9 µs      │ 100     │ 100
-│  ├─ 100000     4.962 ms      │ 9.332 ms      │ 5.439 ms      │ 5.711 ms      │ 100     │ 100
-│  ╰─ 500000     38.89 ms      │ 47.92 ms      │ 42.48 ms      │ 42.49 ms      │ 100     │ 100
-├─ bench_delete                │               │               │               │         │
-│  ├─ 10000      563.3 µs      │ 4.344 ms      │ 678.8 µs      │ 874.4 µs      │ 100     │ 100
-│  ├─ 100000     21.35 ms      │ 61.54 ms      │ 24.03 ms      │ 26.84 ms      │ 100     │ 100
-│  ╰─ 500000     509.7 ms      │ 680.9 ms      │ 540.6 ms      │ 548.3 ms      │ 100     │ 100
-├─ bench_insert                │               │               │               │         │
-│  ├─ 10000      367.2 µs      │ 703.9 µs      │ 373.4 µs      │ 391.7 µs      │ 100     │ 100
-│  ├─ 100000     10.75 ms      │ 22.04 ms      │ 11.07 ms      │ 12.07 ms      │ 100     │ 100
-│  ╰─ 500000     214 ms        │ 332.5 ms      │ 234.9 ms      │ 245.4 ms      │ 100     │ 100
-╰─ bench_query                 │               │               │               │         │
-   ├─ 10000      1.403 ms      │ 2.333 ms      │ 1.43 ms       │ 1.487 ms      │ 100     │ 100
-   ├─ 100000     354.7 ms      │ 780.2 ms      │ 369.8 ms      │ 392.2 ms      │ 100     │ 100
-   ╰─ 500000     32.15 s       │ 36.61 s       │ 33.2 s        │ 34.28 s       │ 100     │ 100
+                         | CPPDNDTree |  IDTree    | DNDTree
+Result Type              | Mean (ns)  | Mean (ns)  | Mean (ns)  
+-----------------------------------------------------------------
+--- INSERTION ---                                               
+Non-Tree Edge            | 2590.14    | 2474.09    | 1699.68    
+Tree Edge                | 480.23     | 251.95     | 234.50     
+Non-Tree Reroot          | 745.96     | 392.92     | 391.72     
+Tree Reroot              | 426.55     | 146.56     | 181.44     
+-----------------------------------------------------------------
+--- QUERY (COLD) ---                                            
+Disconnected             | 120.87     | 2499.36    | 111.04     
+Connected                | 75.03      | 4215.66    | 116.51     
+-----------------------------------------------------------------
+--- QUERY (WARM) ---                                            
+Disconnected             | 36.25      | 1716.17    | 30.28      
+Connected                | 33.66      | 3291.43    | 28.46      
+-----------------------------------------------------------------
+--- DELETION ---                                                
+Non-Tree Edge            | 215.90     | 74.85      | 81.31      
+Tree Edge (Split)        | 5209.38    | 3072.58    | 3120.77    
+Tree Edge (Replaced)     | 846.16     | 244.82     | 390.12     
 ```
-¹ Creates the same graph as 'bench_insert' but uses a pre-populated adj map.
 
-The ID-Tree, which differs from the DS-Tree in that it does not have a disjoint
-set to update on insert or delete, does much less work on insert than it does on
-delete, since the insert only needs to check for re-balancing of the spanning
-tree. Delete needs to check for a replacement edge. The query needs to walk the
-tree to a common parent, which doesn't need to be done in the DS-Tree variant,
-for each query since it doesn't have the constant lookup of the disjoint set.
+## bdo_exploration_graph.mtx
 
-_The primary use case for the ID-Tree compared to the DS-Tree (or a D-Tree) is
-when many insert/delete actions are done per query._
+This is a small planar graph (~1k nodes) with average 2.6 degrees.
+```
+                         | CPPDNDTree | IDTree     | DNDTree
+Result Type              | Mean (ns)  | Mean (ns)  | Mean (ns)  
+----------------------------------------------------------------
+--- INSERTION ---                                         
+Non-Tree Edge            | 269.37     | 147.24     | 123.83      
+Tree Edge                | 143.41     | 52.24      | 56.48       
+Non-Tree Reroot          | 335.36     | 168.10     | 153.10      
+Tree Reroot              | 158.55     | 53.06      | 64.88       
+-----------------------------------------------------------------
+--- QUERY (COLD) ---                                             
+Disconnected             | 35.10      | 43.85      | 30.57       
+Connected                | 36.26      | 49.94      | 31.21       
+-----------------------------------------------------------------
+--- QUERY (WARM) ---                                             
+Disconnected             | 31.58      | 43.38      | 28.94       
+Connected                | 31.65      | 49.28      | 29.01       
+-----------------------------------------------------------------
+--- DELETION ---                                                 
+Non-Tree Edge            | 95.94      | 39.69      | 38.73       
+Tree Edge (Split)        | 544.92     | 182.60     | 179.81      
+Tree Edge (Replaced)     | 217.16     | 61.39      | 79.31       
+```
 
-## Features
+# Features
 
-### Core ID‑Tree Operations
+## Core ID‑Tree Operations
 - Dynamic insertion and deletion of undirected edges.
 - Amortized‑efficient connectivity queries.  
   (For a truly constant query time see the DS-Tree variant from the same paper.)
 - Balanced rerooting and centroid maintenance following the original algorithm.
 
-### Graph Utilities
+## Graph Utilities
 Additional helpers built on top of the ID‑Tree adjacency graph:
 - Shortest‑path queries (BFS).
 - Fundamental cycle‑basis extraction.
@@ -81,9 +122,10 @@ Additional helpers built on top of the ID‑Tree adjacency graph:
 - Active‑node tracking and filtering.
 - Subset‑betweenness computations for specialized workloads.
 
-### Optional Python Bindings
+## Optional Python Bindings
 Enable the `python` feature to expose the API to Python via PyO3.
 
 ```toml
 [features]
 python = ["pyo3"]
+```

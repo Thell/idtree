@@ -3,16 +3,16 @@ use pyo3::prelude::*;
 
 use nohash_hasher::{IntMap, IntSet};
 
-use crate::id_tree::{IdTree, NodeId};
+use crate::id_tree::{IDTree, NodeId};
 
 /// Python bindings for the ID‑Tree data structure.
 #[pyclass(name = "IDTree", unsendable)]
-pub struct PyIdTree {
-    inner: IdTree,
+pub struct PyIDTree {
+    inner: IDTree,
 }
 
 #[pymethods]
-impl PyIdTree {
+impl PyIDTree {
     /// Construct an IDTree from a Python adjacency dictionary:
     ///
     ///     { 0: [1], 1: [0,2], 2: [1] }
@@ -25,7 +25,7 @@ impl PyIdTree {
             .collect();
 
         Ok(Self {
-            inner: IdTree::from_adj_map(&adj_map),
+            inner: IDTree::from_adj_map(&adj_map),
         })
     }
 
@@ -141,6 +141,6 @@ impl PyIdTree {
 /// Module initializer
 #[pymodule]
 pub fn python_idtree(_py: Python, m: &PyModule) -> PyResult<()> {
-    m.add_class::<PyIdTree>()?;
+    m.add_class::<PyIDTree>()?;
     Ok(())
 }

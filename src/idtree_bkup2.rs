@@ -22,7 +22,7 @@ pub struct Node {
     pub subtree_size: i32,
 
     /// The adjacent neighbors of this node
-    pub neighbors: SmallVec<[u32; 8]>,
+    pub neighbors: SmallVec<[usize; 4]>,
 }
 
 impl Node {
@@ -34,9 +34,9 @@ impl Node {
         }
     }
 
-    fn insert_neighbor(&mut self, u: u32) -> i32 {
-        if !self.neighbors.contains(&u) {
-            self.neighbors.push(u);
+    fn insert_neighbor(&mut self, u: usize) -> i32 {
+        if !self.neighbors.contains(&(u as usize)) {
+            self.neighbors.push(u as usize);
             // // Sorting is for use during the development cycle for divergence testing of op logic
             // self.neighbors.sort();
             return 0;
@@ -44,8 +44,8 @@ impl Node {
         1
     }
 
-    fn delete_neighbor(&mut self, u: u32) -> i32 {
-        if let Some(i) = self.neighbors.iter().position(|&x| x == u) {
+    fn delete_neighbor(&mut self, u: usize) -> i32 {
+        if let Some(i) = self.neighbors.iter().position(|&x| x == u as usize) {
             self.neighbors.swap_remove(i);
             // // Sorting is for use during the development cycle for divergence testing of op logic
             // self.neighbors.sort();
@@ -55,7 +55,7 @@ impl Node {
     }
 }
 
-/// MARK: DNDTree
+/// DNDTree
 //
 // NOTE: After setup completes all node, neighbor and link entries are
 //       guaranteed to be within range 0..self.n
@@ -65,15 +65,15 @@ impl Node {
 #[derive(Clone, Debug)]
 pub struct IDTree {
     n: usize,
-
     nodes: Vec<Node>,
-    generation: u16,
-    generations: Vec<u16>,
+
     vec_scratch_nodes: Vec<usize>,
+    vec_scratch_stack: Vec<usize>,
+    generation: u32,
+    generations: Vec<u32>,
 
     distances: Vec<i32>,               // (used for betweenness)
     deque_scratch: VecDeque<usize>,    // scratch area (used by shortest path)
-    vec_scratch_stack: Vec<usize>,     // scratch area
     node_bitset_scratch0: FixedBitSet, // |nodes| len scratch area
     node_bitset_scratch1: FixedBitSet, // |nodes| len scratch area
     node_bitset_scratch2: FixedBitSet, // |nodes| len scratch area
@@ -119,8 +119,6 @@ impl IDTree {
     }
 
     /// Query if u and v are in the same connected component
-    //
-    // NOTE: mut is required for DSU path and link compression
     pub fn query(&self, u: usize, v: usize) -> bool {
         if u >= self.n || v >= self.n {
             return false;
@@ -128,14 +126,14 @@ impl IDTree {
         self.get_tree_root(u) == self.get_tree_root(v)
     }
 
-    /// For tests
-    pub fn get_node_data(&self, u: usize) -> Node {
-        self.nodes[u].clone()
-    }
-
-    /// For tests
+    /// Get parent of node
     pub fn get_parent(&self, u: usize) -> usize {
         self.nodes[u].parent
+    }
+
+    /// TODO: Remove after debugging
+    pub fn get_node_data(&self, u: usize) -> Node {
+        self.nodes[u].clone()
     }
 }
 
@@ -144,7 +142,7 @@ impl IDTree {
     //       guaranteed to be within range 0..self.n
     // SAFETY: No function should be added to the struct that allows direct modification
     //         of any of these fields
-    // #[inline(never)]
+    #[inline(always)]
     fn setup(adj_dict: &IntMap<usize, IntSet<usize>>) -> Self {
         let n = adj_dict.len();
         let nodes: Vec<Node> = (0..n)
@@ -152,7 +150,7 @@ impl IDTree {
                 let mut node = Node::new();
                 for &j in adj_dict.get(&(i)).unwrap_or(&IntSet::default()) {
                     assert!(j < n, "invalid neighbor {} of {}", j, adj_dict.len());
-                    node.insert_neighbor(j as u32);
+                    node.insert_neighbor(j);
                 }
                 node
             })
@@ -161,28 +159,27 @@ impl IDTree {
         Self {
             n,
             nodes,
+            vec_scratch_nodes: vec![],
+            vec_scratch_stack: vec![],
             generation: 1,
             generations: vec![0; n],
-            vec_scratch_nodes: Vec::with_capacity(n),
 
             distances: vec![0; n],
             deque_scratch: VecDeque::with_capacity(n),
-            vec_scratch_stack: vec![],
             node_bitset_scratch0: FixedBitSet::with_capacity(n),
             node_bitset_scratch1: FixedBitSet::with_capacity(n),
             node_bitset_scratch2: FixedBitSet::with_capacity(n),
         }
     }
 
-    // #[inline(never)]
+    #[inline(always)]
     fn initialize(&mut self) {
-        let cur_generation = self.next_generation();
+        self.generation = self.generation.wrapping_add(1);
 
         let sorted_nodes = self.sort_nodes_by_degree();
 
         for &node in sorted_nodes.iter() {
-            // NOTE: generation is set for the subtree nodes in bfs_setup_subtrees
-            if self.generations[node] == cur_generation {
+            if self.generations[node] == self.generation {
                 continue;
             }
 
@@ -193,11 +190,9 @@ impl IDTree {
                 self.reroot(centroid, node);
             }
         }
-
-        self.vec_scratch_nodes.clear();
     }
 
-    // #[inline(never)]
+    #[inline(always)]
     fn sort_nodes_by_degree(&self) -> Vec<usize> {
         let mut node_indices: Vec<usize> = (0..self.n).collect();
         node_indices.sort_unstable_by(|&a, &b| {
@@ -209,7 +204,7 @@ impl IDTree {
         node_indices
     }
 
-    // #[inline(never)]
+    #[inline(always)]
     fn bfs_setup_subtrees(&mut self, root: usize) {
         use std::collections::VecDeque;
         let mut deque = VecDeque::new();
@@ -218,15 +213,14 @@ impl IDTree {
         self.vec_scratch_nodes.clear();
         self.vec_scratch_nodes.push(root);
 
-        let cur_generation = self.generation;
-        self.generations[root] = cur_generation;
+        self.generations[root] = self.generation;
 
         while let Some(p) = deque.pop_front() {
             for j in 0..self.nodes[p].neighbors.len() {
                 let neighbor = self.nodes[p].neighbors[j] as usize;
 
-                if self.generations[neighbor] != cur_generation {
-                    self.generations[neighbor] = cur_generation;
+                if self.generations[neighbor] != self.generation {
+                    self.generations[neighbor] = self.generation;
 
                     self.nodes[neighbor].parent = p;
                     self.vec_scratch_nodes.push(neighbor);
@@ -241,8 +235,7 @@ impl IDTree {
         }
     }
 
-    // #[inline(never)]
-    // NOTE: Uses pre-populated self.vec_scratch_nodes from bfs_setup_subtrees.
+    #[inline(always)]
     fn find_centroid_in_q(&self) -> Option<usize> {
         let num_nodes = self.vec_scratch_nodes.len();
         let half_num_nodes = (num_nodes / 2) as i32;
@@ -259,39 +252,35 @@ impl IDTree {
 
 impl IDTree {
     // MARK: Accessors
-    // SAFETY: Unchecked access is safe because all public functions check invariants
-    //         and after setup completes all entries are within range 0..self.n with
-    //         proper invariants and all node accesses are within range 0..self.n.
+    // SAFETY: Unchecked access is safe because all public functions check range
+    //         and after setup completes all entries are within range 0..self.n
+    //         and all node accesses are within range 0..self.n.
     // NOTE: Sentinel value of usize::MAX is reserved for NULL for parent usage only
     // TODO: Switch to NonMax type once stable https://github.com/rust-lang/rust/issues/151435
-    // #[inline(never)]
+    #[inline(always)]
     fn node(&self, i: usize) -> &Node {
         debug_assert!(i < self.n);
         unsafe { self.nodes.get_unchecked(i) }
     }
 
-    // #[inline(never)]
-    fn next_generation(&mut self) -> u16 {
-        self.generation = self.generation.wrapping_add(1);
-        if self.generation == 0 {
-            self.generation = 1;
-            self.generations.fill(0);
-        }
-        self.generation
+    #[inline(always)]
+    fn node_mut(&mut self, i: usize) -> &mut Node {
+        debug_assert!(i < self.n);
+        unsafe { self.nodes.get_unchecked_mut(i) }
     }
 }
 
 // MARK: Base functions
 
 impl IDTree {
-    // #[inline(never)]
+    #[inline(always)]
     fn delete_edge_in_graph(&mut self, u: usize, v: usize) -> bool {
-        self.nodes[u].delete_neighbor(v as u32) == 0 && self.nodes[v].delete_neighbor(u as u32) == 0
+        self.nodes[u].delete_neighbor(v) == 0 && self.nodes[v].delete_neighbor(u) == 0
     }
 
-    // #[inline(never)]
+    #[inline(always)]
     fn delete_edge_balanced(&mut self, mut u: usize, mut v: usize) -> i32 {
-        if (self.nodes[u].parent != v && self.nodes[v].parent != u) || u == v {
+        if (self.node(u).parent != v && self.node(v).parent != u) || u == v {
             return 0;
         }
 
@@ -300,28 +289,28 @@ impl IDTree {
         }
 
         let (p, subtree_u_size) = self.unlink(u, v);
-        let (small_node, large_node): (usize, usize) =
-            if self.nodes[p].subtree_size < subtree_u_size {
-                (p, u)
-            } else {
-                (u, p)
-            };
+        let (small_node, large_node): (usize, usize) = if self.node(p).subtree_size < subtree_u_size
+        {
+            (p, u)
+        } else {
+            (u, p)
+        };
 
-        // NOTE: Populates self.vec_scratch_nodes for potential re-use by remove_subtree_union_find
         if self.find_replacement(small_node, large_node) {
             return 1;
         }
         2
     }
 
-    // #[inline(never)]
+    #[inline(always)]
     fn insert_edge_in_graph(&mut self, u: usize, v: usize) -> bool {
-        self.nodes[u].insert_neighbor(v as u32) == 0 && self.nodes[v].insert_neighbor(u as u32) == 0
+        self.node_mut(u).insert_neighbor(v) == 0 && self.node_mut(v).insert_neighbor(u) == 0
     }
 
-    // #[inline(never)]
+    #[inline(always)]
     fn insert_edge_balanced(&mut self, u: usize, v: usize) -> i32 {
         let (fu, fv) = (self.get_tree_root(u), self.get_tree_root(v));
+
         if fu == fv {
             self.insert_non_tree_edge_balanced(u, v, fu)
         } else {
@@ -338,7 +327,7 @@ impl IDTree {
     /// - `u`, `v`: original edge endpoints
     /// - `f`: the component root (tree‑root or DSU‑root), used to compute the
     ///        target half‑subtree size during rebalancing
-    // #[inline(never)]
+    #[inline(always)]
     fn insert_non_tree_edge_balanced(&mut self, u: usize, v: usize, f: usize) -> i32 {
         let (reshape, small_node, large_node, small_p, _large_p) =
             self.detect_depth_imbalance(u, v);
@@ -351,7 +340,7 @@ impl IDTree {
         let p = self.find_imbalance_centroid(small_node, small_p);
 
         // Remove the subtree rooted at the detach point from its ancestors.
-        self.adjust_subtree_sizes(p, -self.nodes[p].subtree_size);
+        self.adjust_subtree_sizes(p, -self.node(p).subtree_size);
 
         // Reroot the smaller subtree under the larger side.
         self.nodes[p].parent = SENTINEL;
@@ -380,7 +369,7 @@ impl IDTree {
     /// - `u`, `v`: edge endpoints
     /// - `fu`: root of u’s component
     /// - `fv`: root of v’s component
-    // #[inline(never)]
+    #[inline(always)]
     fn insert_tree_edge_balanced(
         &mut self,
         mut u: usize,
@@ -389,7 +378,7 @@ impl IDTree {
         mut fv: usize,
     ) -> i32 {
         // Ensure fu is the root of the smaller component.
-        if self.nodes[fu].subtree_size > self.nodes[fv].subtree_size {
+        if self.node(fu).subtree_size > self.node(fv).subtree_size {
             std::mem::swap(&mut u, &mut v);
             std::mem::swap(&mut fu, &mut fv);
         }
@@ -400,7 +389,6 @@ impl IDTree {
         let new_root = self.rebalance_tree(fu, v, fv);
 
         self.fix_rotated_subtree_sizes(u, v);
-
         if let Some(new_root) = new_root
             && new_root != fv
         {
@@ -411,7 +399,7 @@ impl IDTree {
         1
     }
 
-    // #[inline(never)]
+    #[inline(always)]
     fn get_tree_root(&self, u: usize) -> usize {
         let mut root = u;
         while self.node(root).parent != SENTINEL {
@@ -435,7 +423,7 @@ impl IDTree {
     /// - `large_node`: the deeper side (after swap)
     /// - `small_p`: parent pointer at the divergence point for the shallow side
     /// - `large_p`: parent pointer at the divergence point for the deep side
-    // #[inline(never)]
+    #[inline(always)]
     fn detect_depth_imbalance(
         &self,
         mut u: usize,
@@ -444,26 +432,26 @@ impl IDTree {
         let mut reshape = false;
         let mut depth = 0;
 
-        let mut pu = self.nodes[u].parent;
-        let mut pv = self.nodes[v].parent;
+        let mut pu = self.node(u).parent;
+        let mut pv = self.node(v).parent;
 
         while depth < MAX_DEPTH {
             if pu == SENTINEL {
-                if pv != SENTINEL && self.nodes[pv].parent != SENTINEL {
+                if pv != SENTINEL && self.node(pv).parent != SENTINEL {
                     reshape = true;
                     std::mem::swap(&mut u, &mut v);
                     std::mem::swap(&mut pu, &mut pv);
                 }
                 break;
             } else if pv == SENTINEL {
-                if pu != SENTINEL && self.nodes[pu].parent != SENTINEL {
+                if pu != SENTINEL && self.node(pu).parent != SENTINEL {
                     reshape = true;
                 }
                 break;
             }
 
-            pu = self.nodes[pu].parent;
-            pv = self.nodes[pv].parent;
+            pu = self.node(pu).parent;
+            pv = self.node(pv).parent;
             depth += 1;
         }
 
@@ -481,21 +469,21 @@ impl IDTree {
     ///
     /// Returns:
     /// - the centroid node index
-    // #[inline(never)]
+    #[inline(always)]
     fn find_imbalance_centroid(&self, small_node: usize, small_p: usize) -> usize {
         let mut depth_imbalance = 0;
         let mut p = small_p;
 
         while p != SENTINEL {
             depth_imbalance += 1;
-            p = self.nodes[p].parent;
+            p = self.node(p).parent;
         }
 
         depth_imbalance = depth_imbalance / 2 - 1;
 
         let mut cur = small_node;
         while depth_imbalance > 0 {
-            cur = self.nodes[cur].parent;
+            cur = self.node(cur).parent;
             depth_imbalance -= 1;
         }
 
@@ -512,16 +500,15 @@ impl IDTree {
     ///
     /// Returns:
     /// - the last node whose subtree size was adjusted (the root)
-    // #[inline(never)]
+    #[inline(always)]
     fn adjust_subtree_sizes(&mut self, start_node: usize, delta: i32) -> usize {
         let mut root_v = start_node;
-        let mut w = self.nodes[start_node].parent;
-        while w != SENTINEL {
-            self.nodes[w].subtree_size += delta;
-            root_v = w;
-            w = self.nodes[w].parent;
+        let mut p = self.node(start_node).parent;
+        while p != SENTINEL {
+            self.node_mut(p).subtree_size += delta;
+            root_v = p;
+            p = self.nodes[p].parent;
         }
-
         root_v
     }
 
@@ -537,15 +524,15 @@ impl IDTree {
     /// Returns:
     /// - `Some(new_root)` if a centroid different from `f` is found
     /// - `None` if no rebalance is needed
-    // #[inline(never)]
+    #[inline(always)]
     fn rebalance_tree(&mut self, u: usize, v: usize, f: usize) -> Option<usize> {
-        let s = (self.nodes[f].subtree_size + self.nodes[u].subtree_size) / 2;
+        let s = (self.node(f).subtree_size + self.node(u).subtree_size) / 2;
 
         let mut new_root = None;
         let mut p = v;
 
         while p != SENTINEL {
-            self.nodes[p].subtree_size += self.nodes[u].subtree_size;
+            self.node_mut(p).subtree_size += self.node(u).subtree_size;
             if new_root.is_none() && self.nodes[p].subtree_size > s {
                 new_root = Some(p);
             }
@@ -572,60 +559,58 @@ impl IDTree {
     ///
     /// Arguments:
     /// - `u`: the root of the detached subtree
-    /// - `root_v`: the root of the other component
+    /// - `f`: the root of the other component
     ///
     /// Returns:
     /// - `true` if a replacement edge was found and the tree structure was rebuilt
-    // #[inline(never)]
-    fn find_replacement(&mut self, u: usize, root_v: usize) -> bool {
+    #[inline(always)]
+    fn find_replacement(&mut self, u: usize, f: usize) -> bool {
+        assert_eq!(self.nodes.len(), self.generations.len());
+
         self.vec_scratch_nodes.clear();
-        let cur_generation = self.next_generation();
+
+        self.generation = self.generation.wrapping_add(1);
+        let cur_gen = self.generation;
 
         self.vec_scratch_nodes.push(u);
-        self.generations[u] = cur_generation;
+        self.generations[u] = cur_gen;
 
-        // NOTE: Do not use a deque here for the queue since popping from the front removes elements
-        //       and when use_union_find is true the scratch vec is used as the subtree to
-        //       to remove from the DSU via the remove subtree processing.
         let mut i = 0;
         while i < self.vec_scratch_nodes.len() {
             let node = self.vec_scratch_nodes[i];
+            let parent = self.node(node).parent;
             i += 1;
 
-            'neighbors: for n_idx in 0..self.nodes[node].neighbors.len() {
-                let neighbor = self.nodes[node].neighbors[n_idx] as usize;
-                if neighbor == self.nodes[node].parent {
+            'neighbors: for n_idx in 0..self.node(node).neighbors.len() {
+                let neighbor = self.node(node).neighbors[n_idx] as usize;
+                if neighbor == parent {
                     continue;
                 }
 
-                // NOTE: It is tempting to short-circuit this loop with
-                //         `&& self.generations[neighbor] != cur_generation`
-                //       but that can cause improper subtree setup in the scratch collection
-                //       (See the with_dsu::test_mixed_ops_query_heavy test case.)
-                //       For a non-DSU dedicated build for a specific graph this may be worth the
-                //       performance optimization but requires careful analysis.
-                if self.nodes[neighbor].parent == node {
+                if node == self.node(neighbor).parent && self.generations[neighbor] != cur_gen {
                     self.vec_scratch_nodes.push(neighbor);
-                    self.generations[neighbor] = cur_generation;
+                    self.generations[neighbor] = cur_gen;
                     continue;
                 }
 
+                // Is path clear?
                 let mut w = neighbor;
                 while w != SENTINEL {
-                    if self.generations[w] == cur_generation {
+                    if self.generations[w] == cur_gen {
                         continue 'neighbors;
                     }
-                    w = self.nodes[w].parent;
+                    self.generations[w] = cur_gen;
+                    w = self.node(w).parent;
                 }
 
-                let rotated_u = self.rotate_tree(node, neighbor);
-                let new_root = self.rebalance_tree(rotated_u, neighbor, root_v);
-                self.fix_rotated_subtree_sizes(rotated_u, neighbor);
+                let u = self.rotate_tree(node, neighbor);
+                let new_root = self.rebalance_tree(u, neighbor, f);
+                self.fix_rotated_subtree_sizes(u, neighbor);
 
                 if let Some(new_root) = new_root
-                    && new_root != root_v
+                    && new_root != f
                 {
-                    self.reroot(new_root, root_v);
+                    self.reroot(new_root, f);
                 }
                 return true;
             }
@@ -634,7 +619,7 @@ impl IDTree {
     }
 
     /// Reroots the tree by moving the subtree of `u` to `f`.
-    // #[inline(never)]
+    #[inline(always)]
     fn reroot(&mut self, u: usize, _f: usize) {
         let old_root = self.rotate_tree_to_root(u);
         self.fix_rotated_subtree_sizes_until_root(old_root);
@@ -647,7 +632,7 @@ impl IDTree {
     /// Arguments:
     /// - `start_node`: node whose branch is being rotated
     /// - `stop_node`: attach point in the other component
-    // #[inline(never)]
+    #[inline(always)]
     fn rotate_tree(&mut self, start_node: usize, stop_node: usize) -> usize {
         self._rotate_tree(start_node, stop_node)
     }
@@ -657,7 +642,7 @@ impl IDTree {
     ///
     /// Arguments:
     /// - `start_node`: node whose component is being rerooted
-    // #[inline(never)]
+    #[inline(always)]
     fn rotate_tree_to_root(&mut self, start_node: usize) -> usize {
         self._rotate_tree(start_node, SENTINEL)
     }
@@ -669,13 +654,12 @@ impl IDTree {
     /// Arguments:
     /// - `start_node`: node whose branch is being rotated
     /// - `new_parent`: the parent value to attach the rotated branch under
-    // #[inline(never)]
+    #[inline(always)]
     fn _rotate_tree(&mut self, mut u: usize, new_parent: usize) -> usize {
-        let mut p = self.nodes[u].parent;
+        let mut p = self.node(u).parent;
         self.nodes[u].parent = new_parent;
-
-        while p != SENTINEL {
-            let next = self.nodes[p].parent;
+        while p < self.nodes.len() {
+            let next = self.node(p).parent;
             self.nodes[p].parent = u;
             u = p;
             p = next;
@@ -690,7 +674,7 @@ impl IDTree {
     /// Arguments:
     /// - `start_node`: the node where the updated branch begins
     /// - `stop_node`: the node at which to stop adjusting (the attach point)
-    // #[inline(never)]
+    #[inline(always)]
     fn fix_rotated_subtree_sizes(&mut self, start_node: usize, stop_node: usize) {
         self._fix_rotated_subtree_sizes(start_node, stop_node);
     }
@@ -700,7 +684,7 @@ impl IDTree {
     ///
     /// Arguments:
     /// - `start_node`: the node where the updated branch begins
-    // #[inline(never)]
+    #[inline(always)]
     fn fix_rotated_subtree_sizes_until_root(&mut self, start_node: usize) {
         self._fix_rotated_subtree_sizes(start_node, SENTINEL);
     }
@@ -711,28 +695,31 @@ impl IDTree {
     /// Arguments:
     /// - `start_node`: the node where the updated branch begins
     /// - `stop_parent`: the parent value at which to stop adjusting
-    // #[inline(never)]
+    #[inline(always)]
     fn _fix_rotated_subtree_sizes(&mut self, mut u: usize, stop_parent: usize) {
-        let mut p = self.nodes[u].parent;
+        let mut p = self.node(u).parent;
         while p != stop_parent {
-            self.nodes[u].subtree_size -= self.nodes[p].subtree_size;
+            self.node_mut(u).subtree_size -= self.node(p).subtree_size;
             self.nodes[p].subtree_size += self.nodes[u].subtree_size;
             u = p;
             p = self.nodes[p].parent;
         }
     }
 
+    /// Unlinks the subtree of `u` from the tree, returning the root of the subtree
+    /// and the subtree size of `u`.
+    #[inline(always)]
     fn unlink(&mut self, u: usize, v: usize) -> (usize, i32) {
-        let subtree_u_size = self.nodes[u as usize].subtree_size;
+        let subtree_u_size = self.node(u).subtree_size;
 
         let mut root_v = 0;
-        let mut w = v;
-        while w != SENTINEL {
-            self.nodes[w].subtree_size -= subtree_u_size;
-            root_v = w as usize;
-            w = self.nodes[w as usize].parent;
+        let mut p = v;
+        while p != SENTINEL {
+            self.node_mut(p).subtree_size -= subtree_u_size;
+            root_v = p;
+            p = self.nodes[p].parent;
         }
-        self.nodes[u as usize].parent = SENTINEL;
+        self.nodes[u].parent = SENTINEL;
         (root_v, subtree_u_size)
     }
 }
@@ -848,8 +835,8 @@ impl IDTree {
         let mut visited = IntSet::from_iter([v]);
         while let Some(node) = stack.pop() {
             for &neighbor in self.nodes[node].neighbors.iter() {
-                if visited.insert(neighbor as usize) {
-                    stack.push(neighbor as usize);
+                if visited.insert(neighbor) {
+                    stack.push(neighbor);
                 }
             }
         }
@@ -872,8 +859,8 @@ impl IDTree {
                 self.nodes[node]
                     .neighbors
                     .iter()
-                    .filter(|&v| !visited.put(*v as usize))
-                    .map(|v| *v as usize),
+                    .filter(|&v| !visited.put(*v))
+                    .copied(),
             )
         }
 
@@ -929,7 +916,7 @@ impl IDTree {
     /// Isolate a single node by removing all incident edges.
     pub fn isolate_node(&mut self, v: usize) {
         self.nodes[v].neighbors.clone().iter().for_each(|neighbor| {
-            self.delete_edge(v, *neighbor as usize);
+            self.delete_edge(v, *neighbor);
         });
     }
 
@@ -950,22 +937,12 @@ impl IDTree {
 
     /// Returns the neighbors of the node.
     pub fn neighbors(&mut self, v: usize) -> Vec<usize> {
-        self.nodes[v]
-            .neighbors
-            .iter()
-            .cloned()
-            .map(|x| x as usize)
-            .collect()
+        self.nodes[v].neighbors.iter().cloned().collect()
     }
 
     /// Returns the neighbors of the node.
-    pub fn neighbors_smallvec(&mut self, v: usize) -> SmallVec<[usize; 8]> {
-        self.nodes[v]
-            .neighbors
-            .iter()
-            .cloned()
-            .map(|x| x as usize)
-            .collect()
+    pub fn neighbors_smallvec(&mut self, v: usize) -> SmallVec<[usize; 4]> {
+        self.nodes[v].neighbors.clone()
     }
 
     /// Retain only non-isolated nodes from `from_indices`.
@@ -1011,10 +988,10 @@ impl IDTree {
             }
 
             for &v in &self.nodes[u].neighbors {
-                if visited[v as usize] != self.generation {
-                    visited[v as usize] = self.generation;
-                    parents[v as usize] = u;
-                    queue.push_back(v as usize);
+                if visited[v] != self.generation {
+                    visited[v] = self.generation;
+                    parents[v] = u;
+                    queue.push_back(v);
                 }
             }
         }
@@ -1286,10 +1263,10 @@ impl IDTree {
         while let Some(u) = queue.pop_front() {
             let distance_to_u = self.distances[u];
             for &v in &self.nodes[u].neighbors {
-                if self.generations[v as usize] != self.generation {
-                    self.generations[v as usize] = self.generation;
-                    self.distances[v as usize] = distance_to_u + 1;
-                    queue.push_back(v as usize);
+                if self.generations[v] != self.generation {
+                    self.generations[v] = self.generation;
+                    self.distances[v] = distance_to_u + 1;
+                    queue.push_back(v);
                 }
             }
         }

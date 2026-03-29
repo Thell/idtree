@@ -1,4 +1,4 @@
-#![forbid(unsafe_code)]
+// #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
 //! Implementation of the ID-Tree data structure from:
@@ -9,4 +9,7 @@ mod idtree;
 #[cfg(feature = "python")]
 mod python;
 
-pub use crate::idtree::IdTree;
+pub use crate::idtree::IDTree;
+
+/// Bridge between C++ and Rust
+pub mod bridge;
