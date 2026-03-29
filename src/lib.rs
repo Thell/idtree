@@ -1,4 +1,4 @@
-#![forbid(unsafe_code)]
+// #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
 //! Implementation of the ID-Tree data structure from:
