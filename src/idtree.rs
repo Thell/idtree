@@ -144,7 +144,6 @@ impl IDTree {
     //       guaranteed to be within range 0..self.n
     // SAFETY: No function should be added to the struct that allows direct modification
     //         of any of these fields
-    // #[inline(never)]
     fn setup(adj_dict: &IntMap<usize, IntSet<usize>>) -> Self {
         let n = adj_dict.len();
         let nodes: Vec<Node> = (0..n)
@@ -174,7 +173,6 @@ impl IDTree {
         }
     }
 
-    // #[inline(never)]
     fn initialize(&mut self) {
         let cur_generation = self.next_generation();
 
@@ -197,7 +195,6 @@ impl IDTree {
         self.vec_scratch_nodes.clear();
     }
 
-    // #[inline(never)]
     fn sort_nodes_by_degree(&self) -> Vec<usize> {
         let mut node_indices: Vec<usize> = (0..self.n).collect();
         node_indices.sort_unstable_by(|&a, &b| {
@@ -209,7 +206,6 @@ impl IDTree {
         node_indices
     }
 
-    // #[inline(never)]
     fn bfs_setup_subtrees(&mut self, root: usize) {
         use std::collections::VecDeque;
         let mut deque = VecDeque::new();
@@ -241,7 +237,6 @@ impl IDTree {
         }
     }
 
-    // #[inline(never)]
     // NOTE: Uses pre-populated self.vec_scratch_nodes from bfs_setup_subtrees.
     fn find_centroid_in_q(&self) -> Option<usize> {
         let num_nodes = self.vec_scratch_nodes.len();
@@ -264,13 +259,11 @@ impl IDTree {
     //         proper invariants and all node accesses are within range 0..self.n.
     // NOTE: Sentinel value of usize::MAX is reserved for NULL for parent usage only
     // TODO: Switch to NonMax type once stable https://github.com/rust-lang/rust/issues/151435
-    // #[inline(never)]
     fn node(&self, i: usize) -> &Node {
         debug_assert!(i < self.n);
         unsafe { self.nodes.get_unchecked(i) }
     }
 
-    // #[inline(never)]
     fn next_generation(&mut self) -> u16 {
         self.generation = self.generation.wrapping_add(1);
         if self.generation == 0 {
@@ -284,12 +277,10 @@ impl IDTree {
 // MARK: Base functions
 
 impl IDTree {
-    // #[inline(never)]
     fn delete_edge_in_graph(&mut self, u: usize, v: usize) -> bool {
         self.nodes[u].delete_neighbor(v as u32) == 0 && self.nodes[v].delete_neighbor(u as u32) == 0
     }
 
-    // #[inline(never)]
     fn delete_edge_balanced(&mut self, mut u: usize, mut v: usize) -> i32 {
         if (self.nodes[u].parent != v && self.nodes[v].parent != u) || u == v {
             return 0;
@@ -314,12 +305,10 @@ impl IDTree {
         2
     }
 
-    // #[inline(never)]
     fn insert_edge_in_graph(&mut self, u: usize, v: usize) -> bool {
         self.nodes[u].insert_neighbor(v as u32) == 0 && self.nodes[v].insert_neighbor(u as u32) == 0
     }
 
-    // #[inline(never)]
     fn insert_edge_balanced(&mut self, u: usize, v: usize) -> i32 {
         let (fu, fv) = (self.get_tree_root(u), self.get_tree_root(v));
         if fu == fv {
@@ -338,7 +327,6 @@ impl IDTree {
     /// - `u`, `v`: original edge endpoints
     /// - `f`: the component root (tree‑root or DSU‑root), used to compute the
     ///        target half‑subtree size during rebalancing
-    // #[inline(never)]
     fn insert_non_tree_edge_balanced(&mut self, u: usize, v: usize, f: usize) -> i32 {
         let (reshape, small_node, large_node, small_p, _large_p) =
             self.detect_depth_imbalance(u, v);
@@ -380,7 +368,6 @@ impl IDTree {
     /// - `u`, `v`: edge endpoints
     /// - `fu`: root of u’s component
     /// - `fv`: root of v’s component
-    // #[inline(never)]
     fn insert_tree_edge_balanced(
         &mut self,
         mut u: usize,
@@ -411,7 +398,6 @@ impl IDTree {
         1
     }
 
-    // #[inline(never)]
     fn get_tree_root(&self, u: usize) -> usize {
         let mut root = u;
         while self.node(root).parent != SENTINEL {
@@ -435,7 +421,6 @@ impl IDTree {
     /// - `large_node`: the deeper side (after swap)
     /// - `small_p`: parent pointer at the divergence point for the shallow side
     /// - `large_p`: parent pointer at the divergence point for the deep side
-    // #[inline(never)]
     fn detect_depth_imbalance(
         &self,
         mut u: usize,
@@ -481,7 +466,6 @@ impl IDTree {
     ///
     /// Returns:
     /// - the centroid node index
-    // #[inline(never)]
     fn find_imbalance_centroid(&self, small_node: usize, small_p: usize) -> usize {
         let mut depth_imbalance = 0;
         let mut p = small_p;
@@ -512,7 +496,6 @@ impl IDTree {
     ///
     /// Returns:
     /// - the last node whose subtree size was adjusted (the root)
-    // #[inline(never)]
     fn adjust_subtree_sizes(&mut self, start_node: usize, delta: i32) -> usize {
         let mut root_v = start_node;
         let mut w = self.nodes[start_node].parent;
@@ -537,7 +520,6 @@ impl IDTree {
     /// Returns:
     /// - `Some(new_root)` if a centroid different from `f` is found
     /// - `None` if no rebalance is needed
-    // #[inline(never)]
     fn rebalance_tree(&mut self, u: usize, v: usize, f: usize) -> Option<usize> {
         let s = (self.nodes[f].subtree_size + self.nodes[u].subtree_size) / 2;
 
@@ -576,7 +558,6 @@ impl IDTree {
     ///
     /// Returns:
     /// - `true` if a replacement edge was found and the tree structure was rebuilt
-    // #[inline(never)]
     fn find_replacement(&mut self, u: usize, root_v: usize) -> bool {
         self.vec_scratch_nodes.clear();
         let cur_generation = self.next_generation();
@@ -634,7 +615,6 @@ impl IDTree {
     }
 
     /// Reroots the tree by moving the subtree of `u` to `f`.
-    // #[inline(never)]
     fn reroot(&mut self, u: usize, _f: usize) {
         let old_root = self.rotate_tree_to_root(u);
         self.fix_rotated_subtree_sizes_until_root(old_root);
@@ -647,7 +627,6 @@ impl IDTree {
     /// Arguments:
     /// - `start_node`: node whose branch is being rotated
     /// - `stop_node`: attach point in the other component
-    // #[inline(never)]
     fn rotate_tree(&mut self, start_node: usize, stop_node: usize) -> usize {
         self._rotate_tree(start_node, stop_node)
     }
@@ -657,7 +636,6 @@ impl IDTree {
     ///
     /// Arguments:
     /// - `start_node`: node whose component is being rerooted
-    // #[inline(never)]
     fn rotate_tree_to_root(&mut self, start_node: usize) -> usize {
         self._rotate_tree(start_node, SENTINEL)
     }
@@ -669,7 +647,6 @@ impl IDTree {
     /// Arguments:
     /// - `start_node`: node whose branch is being rotated
     /// - `new_parent`: the parent value to attach the rotated branch under
-    // #[inline(never)]
     fn _rotate_tree(&mut self, mut u: usize, new_parent: usize) -> usize {
         let mut p = self.nodes[u].parent;
         self.nodes[u].parent = new_parent;
@@ -690,7 +667,6 @@ impl IDTree {
     /// Arguments:
     /// - `start_node`: the node where the updated branch begins
     /// - `stop_node`: the node at which to stop adjusting (the attach point)
-    // #[inline(never)]
     fn fix_rotated_subtree_sizes(&mut self, start_node: usize, stop_node: usize) {
         self._fix_rotated_subtree_sizes(start_node, stop_node);
     }
@@ -700,7 +676,6 @@ impl IDTree {
     ///
     /// Arguments:
     /// - `start_node`: the node where the updated branch begins
-    // #[inline(never)]
     fn fix_rotated_subtree_sizes_until_root(&mut self, start_node: usize) {
         self._fix_rotated_subtree_sizes(start_node, SENTINEL);
     }
@@ -711,7 +686,6 @@ impl IDTree {
     /// Arguments:
     /// - `start_node`: the node where the updated branch begins
     /// - `stop_parent`: the parent value at which to stop adjusting
-    // #[inline(never)]
     fn _fix_rotated_subtree_sizes(&mut self, mut u: usize, stop_parent: usize) {
         let mut p = self.nodes[u].parent;
         while p != stop_parent {
