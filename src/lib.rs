@@ -7,7 +7,7 @@
 mod idtree;
 
 #[cfg(feature = "python")]
-mod python;
+mod python_idtree;
 
 pub use crate::idtree::IDTree;
 

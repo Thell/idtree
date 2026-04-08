@@ -1,9 +1,8 @@
-use pyo3::exceptions::{PyIndexError, PyValueError};
 use pyo3::prelude::*;
 
 use nohash_hasher::{IntMap, IntSet};
 
-use crate::id_tree::{IDTree, NodeId};
+use crate::idtree::IDTree;
 
 /// Python bindings for the ID‑Tree data structure.
 #[pyclass(name = "IDTree", unsendable)]
@@ -15,17 +14,17 @@ pub struct PyIDTree {
 impl PyIDTree {
     /// Construct an IDTree from a Python adjacency dictionary:
     ///
-    ///     { 0: [1], 1: [0,2], 2: [1] }
+    ///     { 0: {1}, 1: {0,2}, 2: {1} }
     ///
     #[new]
     fn py_new(adj: std::collections::HashMap<usize, Vec<usize>>) -> PyResult<Self> {
-        let adj_map: IntMap<NodeId, IntSet<NodeId>> = adj
+        let adj_map: IntMap<usize, IntSet<usize>> = adj
             .into_iter()
             .map(|(k, v)| (k, IntSet::from_iter(v)))
             .collect();
 
         Ok(Self {
-            inner: IDTree::from_adj_map(&adj_map),
+            inner: IDTree::new(&adj_map),
         })
     }
 
@@ -138,9 +137,8 @@ impl PyIDTree {
     }
 }
 
-/// Module initializer
 #[pymodule]
-pub fn python_idtree(_py: Python, m: &PyModule) -> PyResult<()> {
+pub fn python_idtree(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyIDTree>()?;
     Ok(())
 }
