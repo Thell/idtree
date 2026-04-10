@@ -1,3 +1,5 @@
+// dndtree_wrapper.cpp
+
 #include "dndtree_wrapper.h"
 #include <vector>
 
@@ -35,7 +37,6 @@ int CPPDNDTree::get_subtree_size(int u) const {
     return inner->nodes[u].sub_cnt;
 }
 
-// dndtree_wrapper.cpp
 std::unique_ptr<CPPDNDTree> new_cpp_dndtree(
     int32_t n, 
     rust::Slice<const rust::Vec<int32_t>> adj, 

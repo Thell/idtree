@@ -132,8 +132,7 @@ impl IDTree {
         if u >= self.n || v >= self.n || u == v || !self.insert_edge_in_graph(u, v) {
             return -1;
         }
-        let res = self.insert_edge_balanced(u, v);
-        res
+        self.insert_edge_balanced(u, v)
     }
 
     /// Delete an undirected edge
@@ -147,8 +146,7 @@ impl IDTree {
         if u >= self.n || v >= self.n || u == v || !self.delete_edge_in_graph(u, v) {
             return -1;
         }
-        let res = self.delete_edge_balanced(u, v);
-        res
+        self.delete_edge_balanced(u, v)
     }
 
     /// Query if u and v are in the same connected component
@@ -243,7 +241,7 @@ impl IDTree {
         (0..n)
             .map(|i| {
                 let mut node = Node::new();
-                for &j in adj_dict.get(&(i)).unwrap_or(&IntSet::default()) {
+                for &j in adj_dict.get(&i).unwrap_or(&IntSet::default()) {
                     assert!(j != i, "invalid self loop");
                     assert!(j < n, "invalid neighbor {} of {}", j, i);
                     node.insert_neighbor(j as u32);
@@ -257,8 +255,8 @@ impl IDTree {
         let mut nodes = vec![Node::new(); n];
         for &(j, k) in edges {
             assert!(j != k, "invalid self loop");
-            assert!(j < n, "invalid enpoint {}", j,);
-            assert!(k < n, "invalid enpoint {}", k,);
+            assert!(j < n, "invalid endpoint {}", j,);
+            assert!(k < n, "invalid endpoint {}", k,);
             nodes[j].insert_neighbor(k as u32);
             nodes[k].insert_neighbor(j as u32);
         }
@@ -409,7 +407,7 @@ impl IDTree {
     /// Arguments:
     /// - `u`, `v`: original edge endpoints
     /// - `f`: the component root (tree‑root or DSU‑root), used to compute the
-    ///        target half‑subtree size during rebalancing
+    ///   target half‑subtree size during rebalancing
     fn insert_non_tree_edge_balanced(&mut self, u: usize, v: usize, f: usize) -> i32 {
         let (reshape, small_node, large_node, small_p, _large_p) =
             self.detect_depth_imbalance(u, v);
@@ -780,16 +778,16 @@ impl IDTree {
     }
 
     fn unlink(&mut self, u: usize, v: usize) -> (usize, i32) {
-        let subtree_u_size = self.nodes[u as usize].subtree_size;
+        let subtree_u_size = self.nodes[u].subtree_size;
 
         let mut root_v = 0;
-        let mut w = v;
-        while w != SENTINEL {
-            self.nodes[w].subtree_size -= subtree_u_size;
-            root_v = w as usize;
-            w = self.nodes[w as usize].parent;
+        let mut p = v;
+        while p != SENTINEL {
+            self.nodes[p].subtree_size -= subtree_u_size;
+            root_v = p;
+            p = self.nodes[p].parent;
         }
-        self.nodes[u as usize].parent = SENTINEL;
+        self.nodes[u].parent = SENTINEL;
         (root_v, subtree_u_size)
     }
 }
@@ -854,7 +852,7 @@ impl IDTree {
 
                 while a != b {
                     if self.nodes[a].parent != SENTINEL {
-                        a = self.nodes[a].parent as usize;
+                        a = self.nodes[a].parent;
                         if visited_u[a] {
                             break;
                         }
@@ -867,7 +865,7 @@ impl IDTree {
                         }
                     }
                     if self.nodes[b].parent != SENTINEL && a != b {
-                        b = self.nodes[b].parent as usize;
+                        b = self.nodes[b].parent;
                         if visited_v[b] {
                             break;
                         }
