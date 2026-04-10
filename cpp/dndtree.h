@@ -264,18 +264,6 @@ inline DNDTree::DNDTree(string path, bool load_graph, bool use_union_find)
     printf("Graph loaded, n = %d, m = %lld\n", n, m / 2);
 }
 
-// inline DNDTree::DNDTree(int n_nodes, const std::vector<std::vector<int>>& adj_list, bool use_union_find) {
-//     this->n = n_nodes;
-//     this->use_union_find = use_union_find;
-//     this->nodes.resize(n_nodes);
-//     this->l_nodes.resize(n_nodes);
-//     for (int i = 0; i < n_nodes; ++i) {
-//         this->nodes[i].adj = adj_list[i]; // Accepts the empty or pre-filled adj
-//         this->l_nodes[i].v = i;
-//     }
-//     this->init();
-// }
-// dndtree.h
 inline DNDTree::DNDTree(int n_nodes, const std::vector<std::vector<int>>& adj_list, bool use_union_find) {
     this->n = n_nodes;
     this->use_union_find = use_union_find;

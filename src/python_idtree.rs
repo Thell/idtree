@@ -12,19 +12,40 @@ pub struct PyIDTree {
 
 #[pymethods]
 impl PyIDTree {
+    /// Construct an IDTree with n nodes:
+    #[new]
+    fn new(n: usize) -> PyResult<Self> {
+        Ok(Self {
+            inner: IDTree::new(n),
+        })
+    }
+
     /// Construct an IDTree from a Python adjacency dictionary:
     ///
     ///     { 0: {1}, 1: {0,2}, 2: {1} }
     ///
-    #[new]
-    fn py_new(adj: std::collections::HashMap<usize, Vec<usize>>) -> PyResult<Self> {
+    #[staticmethod]
+    #[pyo3(name = "from_adj")]
+    fn py_from_adj(adj: std::collections::HashMap<usize, Vec<usize>>) -> PyResult<Self> {
         let adj_map: IntMap<usize, IntSet<usize>> = adj
             .into_iter()
             .map(|(k, v)| (k, IntSet::from_iter(v)))
             .collect();
 
         Ok(Self {
-            inner: IDTree::new(&adj_map),
+            inner: IDTree::from_adj(&adj_map),
+        })
+    }
+
+    /// Construct an IDTree of n nodes with edges from a list of edges:
+    ///
+    ///    (3, [(0, 1), (1, 2), (2, 1)])
+    ///
+    #[staticmethod]
+    #[pyo3(name = "from_edges")]
+    fn py_from_edges(n: usize, edges: Vec<(usize, usize)>) -> PyResult<Self> {
+        Ok(Self {
+            inner: IDTree::from_edges(n, &edges),
         })
     }
 
@@ -62,6 +83,7 @@ impl PyIDTree {
 
     /// Return the fundamental cycle basis for the component containing `root`.
     #[pyo3(name = "cycle_basis")]
+    #[pyo3(signature = (root=None))]
     fn py_cycle_basis(&mut self, root: Option<usize>) -> PyResult<Vec<Vec<usize>>> {
         Ok(self.inner.cycle_basis(root))
     }
@@ -138,6 +160,7 @@ impl PyIDTree {
 }
 
 #[pymodule]
+/// Python bindings for the ID-Tree data structure.
 pub fn python_idtree(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyIDTree>()?;
     Ok(())

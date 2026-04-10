@@ -37,8 +37,11 @@ impl Node {
     fn insert_neighbor(&mut self, u: u32) -> i32 {
         if !self.neighbors.contains(&u) {
             self.neighbors.push(u);
-            // // Sorting is for use during the development cycle for divergence testing of op logic
-            // self.neighbors.sort();
+
+            // Sorting is for use during the development cycle for divergence testing of op logic
+            #[cfg(feature = "cpp")]
+            self.neighbors.sort();
+
             return 0;
         }
         1
@@ -47,8 +50,11 @@ impl Node {
     fn delete_neighbor(&mut self, u: u32) -> i32 {
         if let Some(i) = self.neighbors.iter().position(|&x| x == u) {
             self.neighbors.swap_remove(i);
-            // // Sorting is for use during the development cycle for divergence testing of op logic
-            // self.neighbors.sort();
+
+            // Sorting is for use during the development cycle for divergence testing of op logic
+            #[cfg(feature = "cpp")]
+            self.neighbors.sort();
+
             return 0;
         }
         1
@@ -80,9 +86,36 @@ pub struct IDTree {
 }
 
 impl IDTree {
-    /// Create a new DNDTree
-    pub fn new(adj_dict: &IntMap<usize, IntSet<usize>>) -> Self {
-        let mut instance = Self::setup(&adj_dict);
+    /// Create a new IDTree with n isolated nodes.
+    ///
+    /// NOTE: new nodes are never added to the tree post setup.
+    pub fn new(n: usize) -> Self {
+        assert!(n > 0, "must have at least one node");
+        let nodes = vec![Node::new(); n];
+        Self::_new(nodes)
+    }
+
+    /// Create a new DNDTree with the given adjacency list where there are adj_dict.len() nodes
+    /// and all keys are in range 0..adj_dict.len().
+    ///
+    /// NOTE: new nodes are never added to the tree post setup.
+    pub fn from_adj(adj_dict: &IntMap<usize, IntSet<usize>>) -> Self {
+        let n = adj_dict.len();
+        assert!(n > 0, "adjacency map must have at least one entry");
+        let nodes = Self::nodes_from_map(n, adj_dict);
+        let mut instance = Self::_new(nodes);
+        instance.initialize();
+        instance
+    }
+
+    /// Create a new DNDTree with the given edges where there are n nodes and all edge
+    /// endpoints are in range 0..n
+    ///
+    /// NOTE: new nodes are never added to the tree post setup.
+    pub fn from_edges(n: usize, edges: &[(usize, usize)]) -> Self {
+        assert!(n > 0, "must have at least one node");
+        let nodes = Self::nodes_from_edges(n, edges);
+        let mut instance = Self::_new(nodes);
         instance.initialize();
         instance
     }
@@ -128,6 +161,50 @@ impl IDTree {
         self.get_tree_root(u) == self.get_tree_root(v)
     }
 
+    /// Reset the graph to contain zero edges (n isolated nodes).
+    ///
+    /// NOTE: The number of nodes is left unchanged.
+    pub fn reset_all_edges(&mut self) {
+        for node in &mut self.nodes {
+            node.neighbors.clear();
+            node.parent = SENTINEL;
+            node.subtree_size = 1;
+        }
+    }
+
+    /// Reset the graph to contain edges given in edge_list.
+    ///
+    /// NOTE: The number of nodes is left unchanged.
+    ///
+    /// NOTE: Assumes all endpoints are in range 0..self.n
+    pub fn reset_all_edges_to_edges(&mut self, edges: &[(usize, usize)]) {
+        self.reset_all_edges();
+        edges.iter().for_each(|(u, v)| {
+            self.insert_edge_in_graph(*u, *v);
+        });
+        self.initialize();
+    }
+
+    /// Reset the graph to contain edges given in adj_dict.
+    ///
+    /// NOTE: The number of nodes is left unchanged.
+    ///
+    /// NOTE: Assumes adj_dict contains the full undirected graph with all nodes represented
+    ///       as keys and all endpoint indices are in range 0..self.n.
+    pub fn reset_all_edges_to_adj(&mut self, adj_dict: &IntMap<usize, IntSet<usize>>) {
+        let n = adj_dict.len();
+        assert_eq!(n, self.n, "adjacency size must match existing tree size");
+        for (i, node) in self.nodes.iter_mut().enumerate() {
+            node.parent = SENTINEL;
+            node.subtree_size = 1;
+
+            let neighbors = adj_dict.get(&i).unwrap();
+            node.neighbors.clear();
+            node.neighbors.extend(neighbors.iter().map(|&j| j as u32));
+        }
+        self.initialize();
+    }
+
     /// For tests
     pub fn get_node_data(&self, u: usize) -> Node {
         self.nodes[u].clone()
@@ -144,19 +221,8 @@ impl IDTree {
     //       guaranteed to be within range 0..self.n
     // SAFETY: No function should be added to the struct that allows direct modification
     //         of any of these fields
-    fn setup(adj_dict: &IntMap<usize, IntSet<usize>>) -> Self {
-        let n = adj_dict.len();
-        let nodes: Vec<Node> = (0..n)
-            .map(|i| {
-                let mut node = Node::new();
-                for &j in adj_dict.get(&(i)).unwrap_or(&IntSet::default()) {
-                    assert!(j < n, "invalid neighbor {} of {}", j, adj_dict.len());
-                    node.insert_neighbor(j as u32);
-                }
-                node
-            })
-            .collect();
-
+    fn _new(nodes: Vec<Node>) -> Self {
+        let n = nodes.len();
         Self {
             n,
             nodes,
@@ -173,13 +239,42 @@ impl IDTree {
         }
     }
 
+    fn nodes_from_map(n: usize, adj_dict: &IntMap<usize, IntSet<usize>>) -> Vec<Node> {
+        (0..n)
+            .map(|i| {
+                let mut node = Node::new();
+                for &j in adj_dict.get(&(i)).unwrap_or(&IntSet::default()) {
+                    assert!(j != i, "invalid self loop");
+                    assert!(j < n, "invalid neighbor {} of {}", j, i);
+                    node.insert_neighbor(j as u32);
+                }
+                node
+            })
+            .collect()
+    }
+
+    fn nodes_from_edges(n: usize, edges: &[(usize, usize)]) -> Vec<Node> {
+        let mut nodes = vec![Node::new(); n];
+        for &(j, k) in edges {
+            assert!(j != k, "invalid self loop");
+            assert!(j < n, "invalid enpoint {}", j,);
+            assert!(k < n, "invalid enpoint {}", k,);
+            nodes[j].insert_neighbor(k as u32);
+            nodes[k].insert_neighbor(j as u32);
+        }
+        nodes
+    }
+
     fn initialize(&mut self) {
+        assert!(self.nodes.len() == self.generations.len());
+
         let cur_generation = self.next_generation();
 
-        let sorted_nodes = self.sort_nodes_by_degree();
-
-        for &node in sorted_nodes.iter() {
-            // NOTE: generation is set for the subtree nodes in bfs_setup_subtrees
+        for node in 0..self.nodes.len() {
+            // Skip isolated nodes
+            if self.nodes[node].neighbors.is_empty() {
+                continue;
+            }
             if self.generations[node] == cur_generation {
                 continue;
             }
@@ -191,24 +286,12 @@ impl IDTree {
                 self.reroot(centroid, node);
             }
         }
-
         self.vec_scratch_nodes.clear();
     }
 
-    fn sort_nodes_by_degree(&self) -> Vec<usize> {
-        let mut node_indices: Vec<usize> = (0..self.n).collect();
-        node_indices.sort_unstable_by(|&a, &b| {
-            self.nodes[b]
-                .neighbors
-                .len()
-                .cmp(&self.nodes[a].neighbors.len())
-        });
-        node_indices
-    }
-
     fn bfs_setup_subtrees(&mut self, root: usize) {
-        use std::collections::VecDeque;
-        let mut deque = VecDeque::new();
+        let deque = &mut self.deque_scratch;
+        deque.clear();
         deque.push_back(root);
 
         self.vec_scratch_nodes.clear();

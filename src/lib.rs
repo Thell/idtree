@@ -7,9 +7,11 @@
 mod idtree;
 
 #[cfg(feature = "python")]
-mod python_idtree;
+/// Python bindings to Rust implementation
+pub mod python_idtree;
+
+#[cfg(feature = "cpp")]
+/// C++ bindings to reference implementation
+pub mod bridge;
 
 pub use crate::idtree::IDTree;
-
-/// Bridge between C++ and Rust
-pub mod bridge;

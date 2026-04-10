@@ -11,7 +11,7 @@ use rand::RngExt;
 use rand::SeedableRng;
 use rand::rngs::StdRng;
 
-use idtree::bridge::ffi;
+const USE_DSU: bool = false;
 
 // MARK: MTX handling
 struct MtxData {
@@ -196,7 +196,7 @@ mod no_dsu_no_compress {
     fn test_basic_insert_delete_query() {
         let edges = vec![(0, 1), (1, 2), (2, 3)];
         let adj = make_adj_i32(4, &edges);
-        let mut t = IDTree::new(&adj);
+        let mut t = IDTree::from_adj(&adj);
 
         assert!(t.query(0, 3), "query 1");
         t.delete_edge(1, 2);
@@ -209,7 +209,7 @@ mod no_dsu_no_compress {
     fn test_unlink_splits_correctly() {
         let edges = vec![(0, 1), (1, 2), (2, 3)];
         let adj = make_adj_i32(4, &edges);
-        let mut t = IDTree::new(&adj);
+        let mut t = IDTree::from_adj(&adj);
 
         t.delete_edge(1, 2);
         assert!(t.query(0, 1));
@@ -221,7 +221,7 @@ mod no_dsu_no_compress {
     fn test_replacement_edge_found() {
         let edges = vec![(0, 1), (1, 2), (2, 3), (0, 3)];
         let adj = make_adj_i32(4, &edges);
-        let mut t = IDTree::new(&adj);
+        let mut t = IDTree::from_adj(&adj);
 
         let r = t.delete_edge(1, 2);
         assert_eq!(r, 1);
@@ -233,7 +233,7 @@ mod no_dsu_no_compress {
     fn test_replacement_edge_not_found() {
         let edges = vec![(0, 1), (1, 2), (2, 3)];
         let adj = make_adj_i32(4, &edges);
-        let mut t = IDTree::new(&adj);
+        let mut t = IDTree::from_adj(&adj);
 
         let r = t.delete_edge(1, 2);
         assert_eq!(r, 2);
@@ -261,7 +261,7 @@ mod no_dsu_no_compress {
             adj.get_mut(&(v)).unwrap().insert(u);
         }
 
-        let mut tree = IDTree::new(&adj);
+        let mut tree = IDTree::from_adj(&adj);
 
         let mut present: Vec<usize> = (0..n).collect();
         let mut absent: Vec<usize> = (0..n).collect();
@@ -312,7 +312,7 @@ mod no_dsu_no_compress {
             query_pairs.push((qu, qv));
         }
 
-        let mut tree = IDTree::new(&adj);
+        let mut tree = IDTree::from_adj(&adj);
 
         let mut present: Vec<usize> = (0..n).collect();
         let mut absent: Vec<usize> = (0..n).collect();
@@ -348,31 +348,7 @@ fn make_adj_usize(n: usize, edges: &[(usize, usize)]) -> IntMap<usize, IntSet<us
     adj
 }
 
-fn setup_cpp_tree(
-    n: usize,
-    edges: &[(i32, i32)],
-    use_dsu: bool,
-) -> cxx::UniquePtr<ffi::CPPDNDTree> {
-    let mut adj = vec![vec![]; n];
-    for &(u, v) in edges {
-        if u >= 0 && u < n as i32 && v >= 0 && v < n as i32 {
-            adj[u as usize].push(v);
-            adj[v as usize].push(u);
-        }
-    }
-
-    let mut degrees = Vec::with_capacity(n);
-    let mut flat_neighbors = Vec::new();
-    for neighbors in &adj {
-        degrees.push(neighbors.len() as i32);
-        for &v in neighbors {
-            flat_neighbors.push(v);
-        }
-    }
-
-    ffi::new_cpp_dndtree_from_flat_adj(n as i32, &degrees, &flat_neighbors, use_dsu)
-}
-
+#[cfg(feature = "cpp")]
 mod cpp_tests {
     use super::*;
     use cxx::UniquePtr;
@@ -381,8 +357,30 @@ mod cpp_tests {
     use rand::SeedableRng;
     use rand::rngs::StdRng;
 
-    // Switch this when tracing
-    pub const USE_DSU: bool = false; // Both DSU and no DSU expect to pass all tests
+    fn setup_cpp_tree(
+        n: usize,
+        edges: &[(i32, i32)],
+        use_dsu: bool,
+    ) -> cxx::UniquePtr<ffi::CPPDNDTree> {
+        let mut adj = vec![vec![]; n];
+        for &(u, v) in edges {
+            if u >= 0 && u < n as i32 && v >= 0 && v < n as i32 {
+                adj[u as usize].push(v);
+                adj[v as usize].push(u);
+            }
+        }
+
+        let mut degrees = Vec::with_capacity(n);
+        let mut flat_neighbors = Vec::new();
+        for neighbors in &adj {
+            degrees.push(neighbors.len() as i32);
+            for &v in neighbors {
+                flat_neighbors.push(v);
+            }
+        }
+
+        ffi::new_cpp_dndtree_from_flat_adj(n as i32, &degrees, &flat_neighbors, use_dsu)
+    }
 
     #[test]
     fn test_basic_insert_delete_query() {
@@ -446,7 +444,7 @@ mod cpp_tests {
         let cpp_edges: Vec<(i32, i32)> = edges.iter().map(|&(u, v)| (u as i32, v as i32)).collect();
 
         let cpp = setup_cpp_tree(n, &cpp_edges, USE_DSU);
-        let mut idt = IDTree::new(&adj_id);
+        let mut idt = IDTree::from_adj(&adj_id);
 
         for _ in 0..200 {
             let u = rng.random_range(0..n);
@@ -590,7 +588,6 @@ mod cpp_tests {
 
     // This test will fail without sorting of neighbors
     #[test]
-    #[ignore]
     fn test_dndtree_matches_idtree_mtx() {
         use std::io::Write; // Required for flushing
 
@@ -605,7 +602,7 @@ mod cpp_tests {
         let node_count = all_nodes.len();
 
         let cpp = setup_cpp_tree(all_nodes.len(), &[], USE_DSU);
-        let mut idt = IDTree::new(&mtx_data.empty_map_usize);
+        let mut idt = IDTree::from_adj(&mtx_data.empty_map_usize);
 
         // Insertion Phase
         for &(u, v) in mtx_data.all_edges.iter() {

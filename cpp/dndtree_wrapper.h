@@ -19,7 +19,6 @@ public:
     int get_subtree_size(int u) const;
 };
 
-// This declaration must be visible to the bridge
 std::unique_ptr<CPPDNDTree> new_cpp_dndtree_from_flat_adj(
     int32_t n_nodes,
     rust::Slice<const int32_t> degrees,

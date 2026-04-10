@@ -1,6 +1,7 @@
 // bridge.rs
 
-/// Bridge between C++ and Rust for the DNDTree implementation.
+/// Bridge between Rust and C++ for the reference implementation.
+#[cfg(feature = "cpp")]
 #[cxx::bridge]
 pub mod ffi {
     unsafe extern "C++" {
