@@ -9,6 +9,8 @@ use crate::common::Task;
 use crate::common::TaskVariant;
 use crate::common::report;
 
+const USE_DSU: bool = false;
+
 const TASKS: [Task; 1] = [Task {
     variant: TaskVariant::CPPIDTree,
 }];
@@ -19,7 +21,6 @@ const TASKS: [Task; 1] = [Task {
 fn setup_cpp_tree(
     n: usize,
     edges: &[(usize, usize)],
-    use_dsu: bool,
 ) -> cxx::UniquePtr<idtree::bridge::ffi::CPPDNDTree> {
     use idtree::bridge::ffi;
 
@@ -40,7 +41,7 @@ fn setup_cpp_tree(
         }
     }
 
-    ffi::new_cpp_dndtree_from_flat_adj(n as i32, &degrees, &flat_neighbors, use_dsu)
+    ffi::new_cpp_dndtree_from_flat_adj(n as i32, &degrees, &flat_neighbors, USE_DSU)
 }
 
 // MARK: Benchmarks
@@ -50,7 +51,7 @@ fn trace_creation(data: &BenchData) -> Vec<(i32, usize)> {
     let mut trace = Vec::with_capacity(data.edges.len());
 
     let time = Instant::now();
-    let _tree = setup_cpp_tree(data.n, &[], true);
+    let _tree = setup_cpp_tree(data.n, &[]);
     let elapsed = time.elapsed().as_nanos() as usize;
     trace.push((2, elapsed));
 
@@ -59,7 +60,7 @@ fn trace_creation(data: &BenchData) -> Vec<(i32, usize)> {
 
 #[cfg(feature = "cpp")]
 fn trace_insertion(data: &BenchData) -> Vec<(i32, usize)> {
-    let tree = setup_cpp_tree(data.n, &[], true);
+    let tree = setup_cpp_tree(data.n, &[]);
     let mut trace = Vec::with_capacity(data.edges.len());
 
     for &(u, v) in data.edges.iter() {
@@ -74,7 +75,7 @@ fn trace_insertion(data: &BenchData) -> Vec<(i32, usize)> {
 
 #[cfg(feature = "cpp")]
 fn trace_query_cold(data: &BenchData) -> Vec<(i32, usize)> {
-    let tree = setup_cpp_tree(data.n, &data.edges, true);
+    let tree = setup_cpp_tree(data.n, &data.edges);
     let mut trace = Vec::with_capacity(data.edges.len());
 
     for &(u, v) in data.del_edges.iter() {
@@ -93,7 +94,7 @@ fn trace_query_cold(data: &BenchData) -> Vec<(i32, usize)> {
 
 #[cfg(feature = "cpp")]
 fn trace_query_warm(data: &BenchData) -> Vec<(i32, usize)> {
-    let tree = setup_cpp_tree(data.n, &data.edges, true);
+    let tree = setup_cpp_tree(data.n, &data.edges);
     for &(u, v) in data.del_edges.iter() {
         tree.delete_edge(u as i32, v as i32);
     }
@@ -117,7 +118,7 @@ fn trace_query_warm(data: &BenchData) -> Vec<(i32, usize)> {
 
 #[cfg(feature = "cpp")]
 fn trace_delete(data: &BenchData) -> Vec<(i32, usize)> {
-    let tree = setup_cpp_tree(data.n, &data.edges, true);
+    let tree = setup_cpp_tree(data.n, &data.edges);
     let mut trace = Vec::with_capacity(data.edges.len());
 
     for &(u, v) in data.edges.iter() {
