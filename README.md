@@ -15,21 +15,20 @@ Proc. VLDB Endow. 15, 11 (2022), 3263–3276
 
 *This is essentially the DNDTree data structure with the disjoint set tree removed.*
 
-## Algorithmic Complexity
+## Complexity Summary
 
-| Operation          | DND‑Tree    | D‑Tree                                |
-|--------------------|-------------|---------------------------------------|
-| Query processing   | $O(\alpha)$ | $O(h)$                                |
-| Edge insertion     | $O(h)$      | $O(h \cdot \text{nbr}_\text{update})$ |
-| Edge deletion      | $O(h)$      | $O(h^2 \cdot \text{nbr}_\text{scan})$ |
+| Operation        | DND‑Tree     | D‑Tree                                   |
+|------------------|--------------|-------------------------------------------|
+| Query processing | O(α)         | O(h)                                      |
+| Edge insertion   | O(h)         | O(h · nbr_update)                         |
+| Edge deletion    | O(h)         | O(h² · nbr_scan)                          |
 
-Where:
+**Where:**
 
-- $\alpha$ is the inverse Ackermann function, a small constant ($\alpha$ < 5)
-- $h$ is the average vertex depth in the spanning tree.
-- $\text{nbr}_\text{update}$ is the time to insert a vertex into neighbors of a vertex or to
- delete a vertex from neighbors of a vertex.
-- $\text{nbr}_\text{scan}$ is the time to scan all neighbors of a vertex.
+- **α** — inverse Ackermann function (a very small constant, α < 5)  
+- **h** — average vertex depth in the maintained spanning tree  
+- **nbr_update** — time to insert or delete a vertex in a neighbor list  
+- **nbr_scan** — time to scan all neighbors of a vertex  
 
 # Variants
 
@@ -75,8 +74,8 @@ Connected                | 33.66      | 3291.43    | 28.46
 -----------------------------------------------------------------
 --- DELETION ---                                                
 Non-Tree Edge            | 215.90     | 74.85      | 81.31      
-Tree Edge (Split)        | 5209.38    | 3072.58    | 3120.77    
-Tree Edge (Replaced)     | 846.16     | 244.82     | 390.12     
+Tree Edge (Replaced)     | 5209.38    | 3072.58    | 3120.77    
+Tree Edge (Split)        | 846.16     | 244.82     | 390.12     
 ```
 
 ## bdo_exploration_graph.mtx
@@ -102,8 +101,8 @@ Connected                | 31.65      | 49.28      | 29.01
 -----------------------------------------------------------------
 --- DELETION ---                                                 
 Non-Tree Edge            | 95.94      | 39.69      | 38.73       
-Tree Edge (Split)        | 544.92     | 182.60     | 179.81      
-Tree Edge (Replaced)     | 217.16     | 61.39      | 79.31       
+Tree Edge (Replaced)     | 544.92     | 182.60     | 179.81      
+Tree Edge (Split)        | 217.16     | 61.39      | 79.31       
 ```
 
 # Features

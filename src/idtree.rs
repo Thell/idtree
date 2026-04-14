@@ -138,10 +138,10 @@ impl IDTree {
     /// Delete an undirected edge
     ///
     /// Returns:  
-    /// - -1 if the edge is invalid  
-    /// - 0 if the edge deleted was a non-tree edge  
-    /// - 1 if the edge deleted was a tree edge and a replacement edge was found  
-    /// - 2 if the edge deleted was a tree edge and a replacement edge was not found  
+    /// - `-1` if the edge is invalid  
+    /// - `0` if the edge deleted was a non-tree edge  
+    /// - `1` if the edge deleted was a tree edge and a replacement was found  
+    /// - `2` if the edge deleted was a tree edge and a replacement was not found  
     pub fn delete_edge(&mut self, u: usize, v: usize) -> i32 {
         if u >= self.n || v >= self.n || u == v || !self.delete_edge_in_graph(u, v) {
             return -1;
@@ -680,6 +680,7 @@ impl IDTree {
                     w = self.nodes[w].parent;
                 }
 
+                // Replacement edge found...
                 let rotated_u = self.rotate_tree(node, neighbor);
                 let new_root = self.rebalance_tree(rotated_u, neighbor, root_v);
                 self.fix_rotated_subtree_sizes(rotated_u, neighbor);

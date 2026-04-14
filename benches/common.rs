@@ -230,8 +230,8 @@ pub fn report(task: Task, sample_data: Vec<Vec<Vec<(i32, usize)>>>) {
                 },
                 OpType::Deletion => match code {
                     0 => "Non-Tree Edge",
-                    1 => "Tree Edge (Split)",
-                    2 => "Tree Edge (Replaced)",
+                    1 => "Tree Edge (Replaced)",
+                    2 => "Tree Edge (Split)",
                     _ => "Invalid/Other",
                 },
                 OpType::QueryCold | OpType::QueryWarm => match code {
